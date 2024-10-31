@@ -4,8 +4,6 @@ online-fbank
 pysilero
 sounddevice
 soundfile
-# 修改torch版本为2.5，在我的设备上2.3版本无法正常启动本项目
 torch<=2.5
-# 增加torchaudio和PyQt5的安装
 torchaudio<=2.5
 PyQt5
