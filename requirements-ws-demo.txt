@@ -1,4 +1,0 @@
-fastapi[standard]
-pydantic
-pydantic-settings
-loguru
