@@ -4,6 +4,4 @@ online-fbank
 pysilero
 sounddevice
 soundfile
-torch<=2.5
-torchaudio<=2.5
-PyQt5
+torch<=2.3
