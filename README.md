@@ -63,6 +63,5 @@ python StreamingCaptions.py
 
 3. 说明修改与新增内容
 	* 删去了没有使用的运行文件、演示音频、演示图片
-	* requirements.txt 做了修改，修改torch版本为2.5，在我的设备上2.3版本无法正常启动本项目，增加torchaudio和PyQt5的安装
 	* 增加一个SC_SNTube.ico图标作为窗口图标
 	* StreamingCaptions.py为GUI界面，并在其中包含声明
