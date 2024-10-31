@@ -6,7 +6,15 @@ PS: 因为不会用 `python` 实现 `捕获内录音` ，所以需要安装 `Vir
 
 ## 使用
 
+- 拉取
+
+```bash
+git clone -b dev/gui-development https://github.com/SNTube/Streaming-Captions.git
+```
+
 - 安装依赖
+
+cd 到 项目目录下，执行
 
 ```bash
 pip install -r requirements.txt
