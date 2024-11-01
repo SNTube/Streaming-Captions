@@ -5,3 +5,4 @@ pysilero
 sounddevice
 soundfile
 torch<=2.3
+PyQt5
