@@ -22,7 +22,8 @@ pip install -r requirements.txt
 
 - 安装VAC作为内录
 
-1. 用[Virtual Audio Cable (VAC)](https://vac.muzychenko.net/en/)作为内录接口，下载安装包 ( 这东西不好卸载，卸载时请用GeekUninstaller之类的卸载工具 ) 。
+1. 用[Virtual Audio Cable (VAC)](https://vac.muzychenko.net/en/)作为内录接口，下载安装包。
+ ( Virtual Audio Cable这东西不好卸载，卸载时到安装目录内，以管理员权限运行 `delete_service.cmd` ，然后在用GeekUninstaller之类的卸载工具正常卸载 ) 
 
 2. 把安装后显示的播放设备 `Line 1` 设置为默认设备 ( 即 `设为默认值` ) 。
 
