@@ -14,6 +14,7 @@
 
 import sys
 import sounddevice as sd
+import soundfile as sf
 from pysilero import VADIterator
 from streaming_sensevoice import StreamingSenseVoice
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QHBoxLayout, QComboBox
@@ -48,7 +49,8 @@ class SpeechRecognitionThread(QThread):
                     if "start" in speech_dict:
                         self.model.reset()
                     is_last = "end" in speech_dict
-                    for res in self.model.streaming_inference(speech_samples, is_last):
+                    for res in self.model.streaming_inference(speech_samples * 32768, is_last):
+                        sf.write("test.wav", self.vad_iterator.speech_samples, 16000)
                         self.updateTextSignal.emit(res["text"])
 
     def terminate(self):
