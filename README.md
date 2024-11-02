@@ -1,6 +1,6 @@
 # Streaming Captions
 
-Streaming Captions 基于 [streaming-sensevoice](https://github.com/pengzhendong/streaming-sensevoice) 项目，实现类似win11的 `LiveCaptions` 的实时字幕，加入多行文本处理后 `复制到剪贴板` 以适配 [Lunatranslator](https://github.com/HIllya51/LunaTranslator) 的剪贴板识别模式
+Streaming Captions 基于 [streaming-sensevoice](https://github.com/pengzhendong/streaming-sensevoice) 项目，实现类似win11的 `LiveCaptions` 的实时字幕，加入多行文本处理后 `复制到剪贴板` 以适配 [Lunatranslator](https://github.com/HIllya51/LunaTranslator) 的剪贴板识别模式 ( 因为用的是剪贴板模式，会占用剪贴板 ) 。
 
 PS: 因为不会用 `python` 实现 `捕获内录音` ，所以需要安装 `Virtual Audio Cable (VAC) Lite版` 作为 `内录音输入设备` 。
 
