@@ -17,7 +17,7 @@ import sounddevice as sd
 import soundfile as sf
 from pysilero import VADIterator
 from streaming_sensevoice import StreamingSenseVoice
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QHBoxLayout, QComboBox
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QHBoxLayout, QComboBox, QSizePolicy
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSettings, QPoint, QSize
 from PyQt5.QtGui import QColor, QFont, QPainter, QMouseEvent, QIcon
 
@@ -52,6 +52,8 @@ class SpeechRecognitionThread(QThread):
                     for res in self.model.streaming_inference(speech_samples * 32768, is_last):
                         sf.write("test.wav", self.vad_iterator.speech_samples, 16000)
                         self.updateTextSignal.emit(res["text"])
+                    # for res in self.model.streaming_inference(speech_samples, is_last):
+                    #     self.updateTextSignal.emit(res["text"])
 
     def terminate(self):
         self.running = False
@@ -70,7 +72,7 @@ class TransparentWindow(QWidget):
         self.settings = QSettings('SNTube', 'SNTrealtimeSubtitles')
         self.loadSettings()
         self.initUI()
-        self.clipboard_output_enabled = True
+        self.clipboard_output_enabled = False
         self.default_input_device_idx = sd.default.device[0]
         self.vac_input_device_idx = find_device_index('Line 1 (Virtual Audio Cable)')
         self.input_device_idx = self.default_input_device_idx
@@ -87,24 +89,28 @@ class TransparentWindow(QWidget):
         self.setWindowIcon(QIcon('SC_SNTube.ico'))
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
+        self.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.MinimumExpanding))
         
         self.label = QLabel('等待连接', self)
         font = QFont("Arial", 14)
+        font.setBold(True)
         self.label.setFont(font)
         self.label.setStyleSheet("color: white;")
         self.label.setAlignment(Qt.AlignCenter)
         self.label.setWordWrap(True)
+        self.label.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.MinimumExpanding))
+        self.label.setFixedWidth(1000)
 
         self.minimize_btn = QPushButton('-')
         self.minimize_btn.setFixedSize(20, 20)
         self.minimize_btn.clicked.connect(self.showMinimized)
-        self.minimize_btn.setStyleSheet("QPushButton { color: black; background-color: white; border: none; border-radius: 5px; }"
+        self.minimize_btn.setStyleSheet("QPushButton { color: white; background-color: black; border: none; border-radius: 5px; }"
                                         "QPushButton:hover { background-color: lightgray; }")
 
         self.close_btn = QPushButton('×')
         self.close_btn.setFixedSize(20, 20)
         self.close_btn.clicked.connect(self.close)
-        self.close_btn.setStyleSheet("QPushButton { color: black; background-color: white; border: none; border-radius: 5px; }"
+        self.close_btn.setStyleSheet("QPushButton { color: white; background-color: black; border: none; border-radius: 5px; }"
                                      "QPushButton:hover { background-color: lightgray; }")
 
         # 下拉框用于选择语言
@@ -117,6 +123,9 @@ class TransparentWindow(QWidget):
         self.language_combobox.addItem('粤语', 'yue')
         self.language_combobox.currentIndexChanged.connect(self.onLanguageChange)
         self.language_combobox.setFixedHeight(20)
+        self.language_combobox.setStyleSheet("QComboBox { background-color: black; color: gray; border: 1px solid gray; border-radius: 5px; padding: 1px 18px 1px 3px; }"
+                                             "QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; border-top-right-radius: 3px; border-bottom-right-radius: 3px; }"
+                                             "QComboBox QAbstractItemView { border: 1px solid gray; background-color: black; color: white; selection-background-color: darkgray; }")
 
         self.clipboard_output_btn = QPushButton('剪贴板模式')
         self.clipboard_output_btn.setFixedHeight(20)
@@ -124,17 +133,17 @@ class TransparentWindow(QWidget):
         self.clipboard_output_btn.setChecked(True)
         self.clipboard_output_btn.toggled.connect(self.toggleClipboardOutput)
         self.clipboard_output_btn.setStyleSheet(
-            "QPushButton { color: green; background-color: white; border: none; border-radius: 5px; }"
+            "QPushButton { color: gray; background-color: black; border: none; border-radius: 5px; }"
             "QPushButton:hover { background-color: lightgray; }"
-            "QPushButton:checked { color: green; }"
-            "QPushButton:not(:checked) { color: gray; }"
+            "QPushButton:checked { color: gray; }"
+            "QPushButton:not(:checked) { color: green; }"
         )
 
         self.device_switch_btn = QPushButton('麦克风模式ON')
         self.device_switch_btn.setFixedHeight(20)
         self.device_switch_btn.clicked.connect(self.toggleDeviceMode)
         self.device_switch_btn.setStyleSheet(
-            "QPushButton { color: green; background-color: white; border: none; border-radius: 5px; }"
+            "QPushButton { color: green; background-color: black; border: none; border-radius: 5px; }"
             "QPushButton:hover { background-color: lightgray; }"
         )
 
@@ -188,22 +197,22 @@ class TransparentWindow(QWidget):
     def toggleClipboardOutput(self, state):
         if state:
             self.clipboard_output_btn.setStyleSheet(
-                "QPushButton { color: green; background-color: white; border: none; border-radius: 5px; }"
-                "QPushButton:hover { background-color: lightgray; }"
-            )
-            self.clipboard_output_enabled = True
-        else:
-            self.clipboard_output_btn.setStyleSheet(
-                "QPushButton { color: gray; background-color: white; border: none; border-radius: 5px; }"
+                "QPushButton { color: gray; background-color: black; border: none; border-radius: 5px; }"
                 "QPushButton:hover { background-color: lightgray; }"
             )
             self.clipboard_output_enabled = False
+        else:
+            self.clipboard_output_btn.setStyleSheet(
+                "QPushButton { color: green; background-color: black; border: none; border-radius: 5px; }"
+                "QPushButton:hover { background-color: lightgray; }"
+            )
+            self.clipboard_output_enabled = True
 
     def toggleDeviceMode(self):
         if self.is_vac_mode:
             self.device_switch_btn.setText('麦克风模式ON')
             self.device_switch_btn.setStyleSheet(
-                "QPushButton { color: green; background-color: white; border: none; border-radius: 5px; }"
+                "QPushButton { color: green; background-color: black; border: none; border-radius: 5px; }"
                 "QPushButton:hover { background-color: lightgray; }"
             )
             self.input_device_idx = self.default_input_device_idx
@@ -211,7 +220,7 @@ class TransparentWindow(QWidget):
         else:
             self.device_switch_btn.setText('VAC模式ON')
             self.device_switch_btn.setStyleSheet(
-                "QPushButton { color: blue; background-color: white; border: none; border-radius: 5px; }"
+                "QPushButton { color: blue; background-color: black; border: none; border-radius: 5px; }"
                 "QPushButton:hover { background-color: lightgray; }"
             )
             self.input_device_idx = self.vac_input_device_idx
@@ -247,6 +256,7 @@ class TransparentWindow(QWidget):
         
         self.label.setText(text)
         
+        # 缓存区累计3行，则自动复制到剪贴板，改成1则实时复制，改成99则只输出同一句话最后一行(搭配luna历史记录使用)
         if self.clipboard_output_enabled and self.counter >= 3:
             self.copyBufferToClipboard()
             self.buffer.clear()
