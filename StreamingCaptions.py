@@ -17,7 +17,7 @@ import sounddevice as sd
 import soundfile as sf
 from pysilero import VADIterator
 from streaming_sensevoice import StreamingSenseVoice
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QHBoxLayout, QComboBox, QSizePolicy
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QHBoxLayout, QComboBox, QSizePolicy, QLineEdit, QSlider, QMenu, QAction
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSettings, QPoint, QSize
 from PyQt5.QtGui import QColor, QFont, QPainter, QMouseEvent, QIcon
 
@@ -41,8 +41,7 @@ class SpeechRecognitionThread(QThread):
         print(f'Use device: {devices[self.input_device_idx]["name"]}')
 
         samples_per_read = int(0.1 * 16000)
-        with sd.InputStream(channels=1, dtype="float32", samplerate=16000,
-                            device=self.input_device_idx) as s:
+        with sd.InputStream(channels=1, dtype="float32", samplerate=16000, device=self.input_device_idx) as s:
             while self.running:
                 samples, _ = s.read(samples_per_read)
                 for speech_dict, speech_samples in self.vad_iterator(samples[:, 0]):
@@ -70,8 +69,6 @@ class TransparentWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.settings = QSettings('SNTube', 'SNTrealtimeSubtitles')
-        self.loadSettings()
-        self.initUI()
         self.clipboard_output_enabled = False
         self.default_input_device_idx = sd.default.device[0]
         self.vac_input_device_idx = find_device_index('Line 1 (Virtual Audio Cable)')
@@ -81,25 +78,34 @@ class TransparentWindow(QWidget):
         self.buffer = []
         self.counter = 0
         self.selected_language = 'auto'
+        self.font_size = 14
+        self.Window_Width = 1000
+        self.dragPosition = None
+        self.is_hidden = False
+        self.initUI()
+        self.loadSettings()  # 加载设置
+        self.updateFontSizeInput()  # 更新字体大小输入框
+        self.updateWidthInput()  # 更新滑动条的值
+        self.adjustSize()  # 更新布局
         self.restartSpeechThread()
 
     def initUI(self):
         self.setWindowTitle('Streaming Captions')
-        self.resize(1000, 100)
+        self.resize(self.Window_Width, 100)
         self.setWindowIcon(QIcon('SC_SNTube.ico'))
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
-        self.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.MinimumExpanding))
+        self.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding))
         
         self.label = QLabel('等待连接', self)
-        font = QFont("Arial", 14)
+        font = QFont("Arial", self.font_size)
         font.setBold(True)
         self.label.setFont(font)
         self.label.setStyleSheet("color: white;")
         self.label.setAlignment(Qt.AlignCenter)
         self.label.setWordWrap(True)
-        self.label.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.MinimumExpanding))
-        self.label.setFixedWidth(1000)
+        self.label.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding))
+        self.label.setFixedWidth(self.Window_Width)
 
         self.minimize_btn = QPushButton('-')
         self.minimize_btn.setFixedSize(20, 20)
@@ -113,7 +119,15 @@ class TransparentWindow(QWidget):
         self.close_btn.setStyleSheet("QPushButton { color: white; background-color: black; border: none; border-radius: 5px; }"
                                      "QPushButton:hover { background-color: lightgray; }")
 
-        # 下拉框用于选择语言
+        self.font_size_label = QLabel('字号')
+        self.font_size_label.setStyleSheet("color: gray;")
+
+        self.font_size_input = QLineEdit(str(self.font_size))
+        self.font_size_input.setFixedSize(50, 20)
+        self.font_size_input.setStyleSheet("QLineEdit { background-color: black; color: gray; border: 1px solid gray; border-radius: 5px; padding: 1px 18px 1px 3px; }")
+        self.font_size_input.returnPressed.connect(self.onFontSizeChange)
+        self.font_size_input.setFocusPolicy(Qt.ClickFocus)  # 设置输入框在点击时获得焦点
+
         self.language_combobox = QComboBox()
         self.language_combobox.addItem('自动', 'auto')
         self.language_combobox.addItem('普通话', 'zh')
@@ -147,11 +161,31 @@ class TransparentWindow(QWidget):
             "QPushButton:hover { background-color: lightgray; }"
         )
 
+        self.width_slider = QSlider(Qt.Horizontal)
+        self.width_slider.setMinimum(500)
+        self.width_slider.setMaximum(2000)
+        self.width_slider.setValue(self.Window_Width)
+        self.width_slider.setTickInterval(100)
+        self.width_slider.setTickPosition(QSlider.NoTicks)
+        self.width_slider.valueChanged.connect(self.onWidthChange)
+        self.width_slider.setStyleSheet("""
+            QSlider::handle:horizontal {
+                background: green;
+                width: 9px;
+                height: 18px;
+                margin: -8px;
+                border-radius: 5px;
+            }
+        """)
+
         layout = QVBoxLayout()
         layout.addWidget(self.label)
         layout.addStretch(1)
         btn_layout = QHBoxLayout()
+        btn_layout.addWidget(self.width_slider)
         btn_layout.addStretch(1)
+        btn_layout.addWidget(self.font_size_label)
+        btn_layout.addWidget(self.font_size_input)
         btn_layout.addWidget(self.language_combobox)
         btn_layout.addWidget(self.clipboard_output_btn)
         btn_layout.addWidget(self.device_switch_btn)
@@ -161,10 +195,22 @@ class TransparentWindow(QWidget):
         
         self.setLayout(layout)
 
+        # 右键菜单
+        self.context_menu = QMenu(self)
+        self.toggle_visibility_action = QAction("隐藏界面", self)
+        self.toggle_visibility_action.triggered.connect(self.toggleVisibility)
+        self.minimize_action = QAction("最小化", self)
+        self.minimize_action.triggered.connect(self.showMinimized)
+        self.close_action = QAction("关闭", self)
+        self.close_action.triggered.connect(self.close)
+        self.context_menu.addAction(self.toggle_visibility_action)
+        self.context_menu.addAction(self.minimize_action)
+        self.context_menu.addAction(self.close_action)
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setOpacity(0.7)
+        painter.setOpacity(0.7 if not self.is_hidden else 0)
         painter.setBrush(QColor(0, 0, 0))
         painter.setPen(Qt.NoPen)
 
@@ -177,20 +223,44 @@ class TransparentWindow(QWidget):
         if event.button() == Qt.LeftButton:
             self.dragPosition = event.globalPos() - self.frameGeometry().topLeft()
             event.accept()
+            self.focusNextChild()  # 失焦输入框
+        elif event.button() == Qt.RightButton:
+            self.context_menu.exec_(self.mapToGlobal(event.pos()))
 
     def mouseMoveEvent(self, event: QMouseEvent):
-        if event.buttons() == Qt.LeftButton:
+        if event.buttons() == Qt.LeftButton and self.dragPosition is not None:
             self.move(event.globalPos() - self.dragPosition)
             event.accept()
 
     def loadSettings(self):
         pos = self.settings.value('pos', QPoint(600, 600))
-        size = self.settings.value('size', QSize(1000, 100))
+        size = self.settings.value('size', QSize(self.Window_Width, 100))
+        font_size = self.settings.value('font_size', 14, type=int)
+        window_width = self.settings.value('window_width', 1000, type=int)
+
         self.setGeometry(pos.x(), pos.y(), size.width(), size.height())
+        self.font_size = font_size
+        font = QFont("Arial", self.font_size)
+        font.setBold(True)
+        self.label.setFont(font)
+
+        self.label.setFixedWidth(self.Window_Width)
+        self.width_slider.setValue(window_width)
+        self.resize(self.Window_Width, self.height())
+        self.adjustSize()
+
+    def updateFontSizeInput(self):
+        self.font_size_input.setText(str(self.font_size))
+    
+    def updateWidthInput(self):
+        self.width_slider.setValue(self.Window_Width)
 
     def closeEvent(self, event):
         self.settings.setValue('pos', self.pos())
         self.settings.setValue('size', self.size())
+        self.settings.setValue('font_size', self.font_size)
+        self.settings.setValue('window_width', self.Window_Width)
+
         if self.speech_thread is not None:
             self.speech_thread.terminate()
 
@@ -231,6 +301,26 @@ class TransparentWindow(QWidget):
         self.selected_language = self.language_combobox.itemData(index)
         self.restartSpeechThread()
 
+    def onFontSizeChange(self):
+        try:
+            new_font_size = int(self.font_size_input.text())
+            if new_font_size > 0:
+                self.font_size = new_font_size
+                font = QFont("Arial", self.font_size)
+                font.setBold(True)
+                self.label.setFont(font)
+                self.adjustSize()  # 更新布局
+                self.focusNextChild()
+        except ValueError:
+            pass  # 忽略非法输入
+
+    def onWidthChange(self, value):
+        self.Window_Width = value
+        self.label.setFixedWidth(self.Window_Width)
+        self.resize(self.Window_Width, self.height())
+        self.updateWidthInput()  # 更新滑动条的值
+        self.adjustSize()  # 更新布局
+
     def restartSpeechThread(self):
         if self.speech_thread is not None:
             self.speech_thread.terminate()
@@ -255,12 +345,14 @@ class TransparentWindow(QWidget):
             self.counter = 1
         
         self.label.setText(text)
-        
-        # 缓存区累计3行，则自动复制到剪贴板，改成1则实时复制，改成99则只输出同一句话最后一行(搭配luna历史记录使用)
+
+        # 缓存区累计3行，则自动复制到剪贴板，改成1则实时复制(比如用麦克风当字幕)，改成99则只输出同一句话最后一行(搭配luna历史记录使用)
         if self.clipboard_output_enabled and self.counter >= 3:
             self.copyBufferToClipboard()
             self.buffer.clear()
             self.counter = 0
+
+        self.adjustSize()  # 更新布局
     
     def copyBufferToClipboard(self):
         if not self.clipboard_output_enabled:
@@ -269,6 +361,14 @@ class TransparentWindow(QWidget):
         multi_line_text = '\n'.join(self.buffer)
         clipboard = QApplication.clipboard()
         clipboard.setText(multi_line_text)
+
+    def toggleVisibility(self):
+        self.is_hidden = not self.is_hidden
+        self.toggle_visibility_action.setText("显示界面" if self.is_hidden else "隐藏界面")
+        self.update()
+
+        for widget in [self.width_slider, self.font_size_label, self.font_size_input, self.language_combobox, self.clipboard_output_btn, self.device_switch_btn, self.minimize_btn, self.close_btn]:
+            widget.setVisible(not self.is_hidden)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
