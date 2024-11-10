@@ -82,6 +82,7 @@ class TransparentWindow(QWidget):
         self.Window_Width = 1000
         self.dragPosition = None
         self.is_hidden = False
+        self.is_hiddenBG = False
         self.initUI()
         self.loadSettings()  # 加载设置
         self.updateFontSizeInput()  # 更新字体大小输入框
@@ -199,18 +200,21 @@ class TransparentWindow(QWidget):
         self.context_menu = QMenu(self)
         self.toggle_visibility_action = QAction("隐藏界面", self)
         self.toggle_visibility_action.triggered.connect(self.toggleVisibility)
+        self.toggle_BG_action = QAction("隐藏背景", self)
+        self.toggle_BG_action.triggered.connect(self.toggleBG)
         self.minimize_action = QAction("最小化", self)
         self.minimize_action.triggered.connect(self.showMinimized)
         self.close_action = QAction("关闭", self)
         self.close_action.triggered.connect(self.close)
         self.context_menu.addAction(self.toggle_visibility_action)
+        self.context_menu.addAction(self.toggle_BG_action)
         self.context_menu.addAction(self.minimize_action)
         self.context_menu.addAction(self.close_action)
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setOpacity(0.7 if not self.is_hidden else 0)
+        painter.setOpacity(0.7 if not self.is_hiddenBG else 0)
         painter.setBrush(QColor(0, 0, 0))
         painter.setPen(Qt.NoPen)
 
@@ -369,6 +373,11 @@ class TransparentWindow(QWidget):
 
         for widget in [self.width_slider, self.font_size_label, self.font_size_input, self.language_combobox, self.clipboard_output_btn, self.device_switch_btn, self.minimize_btn, self.close_btn]:
             widget.setVisible(not self.is_hidden)
+
+    def toggleBG(self):
+        self.is_hiddenBG = not self.is_hiddenBG
+        self.toggle_BG_action.setText("显示背景" if self.is_hiddenBG else "隐藏背景")
+        self.update()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
