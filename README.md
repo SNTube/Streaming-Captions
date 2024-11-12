@@ -40,9 +40,9 @@ python StreamingCaptions.py
 ```
 界面一览无遗，简洁大方，清晰明了。
 
-现在通过 `StringIO` print 出来，可以被Lunatranslator的Hook模式搜到了。
+现在通过 `kernel32.dll` 摸一下文本，可以被Lunatranslator的Hook模式搜到了。
 
-功能包括界面宽度、字号大小、优先语言、剪贴板模式(用于对接luna剪贴板)、VAC模式(VAC专用模式)、标点恢复、隐藏界面、隐藏按钮、热词增强。
+功能包括界面宽度、字号大小、优先语言、剪贴板模式(用于对接luna剪贴板)、VAC模式(VAC专用模式)、标点恢复、文本居中与靠左、隐藏界面、隐藏按钮、热词增强。
 
 - 热词增强
 

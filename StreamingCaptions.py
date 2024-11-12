@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from io import StringIO
+import ctypes
 import sys
 import os
 import sounddevice as sd
@@ -22,6 +22,18 @@ from streaming_sensevoice import StreamingSenseVoice
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QHBoxLayout, QComboBox, QSizePolicy, QLineEdit, QSlider, QMenu, QAction
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSettings, QPoint, QSize
 from PyQt5.QtGui import QColor, QFont, QPainter, QMouseEvent, QIcon
+
+# 加载kernel32.dll库
+kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+
+# 调用MultiByteToWideChar函数
+def multi_byte_to_wide_char(mb_str, code_page=65001):
+    kernel32.MultiByteToWideChar(code_page, 0, mb_str, -1, None, 0)
+    return mb_str
+
+# 如果需要手动释放内存（通常不需要）
+def free_buffer(buffer):
+    kernel32.FreeMemory(ctypes.addressof(buffer))
 
 class SpeechRecognitionThread(QThread):
     updateTextSignal = pyqtSignal(str)
@@ -113,10 +125,11 @@ class TransparentWindow(QWidget):
         self.dragPosition = None
         self.is_hidden = False
         self.is_hiddenBG = False
+        self.alignment = Qt.AlignLeft
         self.initUI()
-        self.loadSettings()  # 加载设置
-        self.updateFontSizeInput()  # 更新字体大小输入框
-        self.updateWidthInput()  # 更新滑动条的值
+        self.loadSettings()
+        self.updateFontSizeInput()
+        self.updateWidthInput()
         self.adjustSize()  # 更新布局
         self.restartSpeechThread()
 
@@ -133,7 +146,7 @@ class TransparentWindow(QWidget):
         font.setBold(True)
         self.label.setFont(font)
         self.label.setStyleSheet("color: white;")
-        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setAlignment(self.alignment)
         self.label.setWordWrap(True)
         self.label.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding))
         self.label.setFixedWidth(self.Window_Width)
@@ -234,6 +247,8 @@ class TransparentWindow(QWidget):
         self.toggle_BG_action.triggered.connect(self.toggleBG)
         self.toggle_TextNorm_action = QAction("标点恢复", self)
         self.toggle_TextNorm_action.triggered.connect(self.toggleTextNorm)
+        self.toggle_alignment_action = QAction("文本靠左", self)
+        self.toggle_alignment_action.triggered.connect(self.toggleAlignment)
         self.minimize_action = QAction("最小化", self)
         self.minimize_action.triggered.connect(self.showMinimized)
         self.close_action = QAction("关闭", self)
@@ -241,6 +256,7 @@ class TransparentWindow(QWidget):
         self.context_menu.addAction(self.toggle_visibility_action)
         self.context_menu.addAction(self.toggle_BG_action)
         self.context_menu.addAction(self.toggle_TextNorm_action)
+        self.context_menu.addAction(self.toggle_alignment_action)
         self.context_menu.addAction(self.minimize_action)
         self.context_menu.addAction(self.close_action)
 
@@ -276,6 +292,7 @@ class TransparentWindow(QWidget):
         font_size = self.settings.value('font_size', 14, type=int)
         window_width = self.settings.value('window_width', 1000, type=int)
         selected_language = self.settings.value('selected_language', 'auto')
+        alignment = self.settings.value('alignment', Qt.AlignLeft, type=int)
 
         self.setGeometry(pos.x(), pos.y(), size.width(), size.height())
         self.font_size = font_size
@@ -288,6 +305,12 @@ class TransparentWindow(QWidget):
         self.resize(self.Window_Width, self.height())
         self.adjustSize()
 
+        # 更新标点恢复按钮
+        self.toggle_TextNorm_action.setText("取消标点" if self.textnorm else "标点恢复")
+
+        self.label.setAlignment(Qt.Alignment(alignment))
+        self.toggle_alignment_action.setText("文本居中" if alignment == Qt.AlignLeft else "文本靠左")
+
         # 断开 currentIndexChanged 信号
         self.language_combobox.blockSignals(True)
 
@@ -299,9 +322,6 @@ class TransparentWindow(QWidget):
 
         # 重新连接 currentIndexChanged 信号
         self.language_combobox.blockSignals(False)
-
-        # 更新标点恢复按钮
-        self.toggle_TextNorm_action.setText("取消标点" if self.textnorm else "标点恢复")
 
     def updateFontSizeInput(self):
         self.font_size_input.setText(str(self.font_size))
@@ -316,6 +336,7 @@ class TransparentWindow(QWidget):
         self.settings.setValue('font_size', self.font_size)
         self.settings.setValue('window_width', self.Window_Width)
         self.settings.setValue('selected_language', self.selected_language)
+        self.settings.setValue('alignment', self.label.alignment())
 
         if self.speech_thread is not None:
             self.speech_thread.terminate()
@@ -401,9 +422,8 @@ class TransparentWindow(QWidget):
             self.counter = 1
         
         self.label.setText(text)
-        memory_file = StringIO()  # 写入内存
-        memory_file.write(text)
-        print(memory_file.getvalue())  # print出来给hook用
+        text_with_newline = text + "\r\n"  # 添加换行符
+        multi_byte_to_wide_char(text_with_newline.encode('utf-8'))
 
         # 缓存区累计3行，则自动复制到剪贴板，改成1则实时复制(比如用麦克风当字幕)，改成99则只输出同一句话最后一行(搭配luna历史记录使用)
         if self.clipboard_output_enabled and self.counter >= 3:
@@ -436,9 +456,20 @@ class TransparentWindow(QWidget):
 
     def toggleTextNorm(self):
         self.textnorm = not self.textnorm
+        self.settings.setValue('textnorm', self.textnorm)
         self.toggle_TextNorm_action.setText("取消标点" if self.textnorm else "标点恢复")
         self.update()
         self.restartSpeechThread()
+
+    def toggleAlignment(self):
+        if self.label.alignment() == Qt.AlignLeft:
+            self.label.setAlignment(Qt.AlignCenter)
+            self.toggle_alignment_action.setText("文本靠左")
+        else:
+            self.label.setAlignment(Qt.AlignLeft)
+            self.toggle_alignment_action.setText("文本居中")
+        self.settings.setValue('alignment', self.label.alignment())
+        self.adjustSize()
 
 
 if __name__ == '__main__':
