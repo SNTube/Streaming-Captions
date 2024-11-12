@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from io import StringIO
 import sys
+import os
 import sounddevice as sd
 import soundfile as sf
 from pysilero import VADIterator
@@ -24,21 +26,50 @@ from PyQt5.QtGui import QColor, QFont, QPainter, QMouseEvent, QIcon
 class SpeechRecognitionThread(QThread):
     updateTextSignal = pyqtSignal(str)
 
-    def __init__(self, input_device_idx, language="auto"):
+    # 加载热词增强
+    def load_hotwords(self):
+        hotwords_file = os.path.join(os.path.dirname(__file__), "hotwords.txt")
+        if not os.path.exists(hotwords_file):
+            print(f"文件 {hotwords_file} 不存在")
+            print("热词增强关闭")
+            return None
+        with open(hotwords_file, "r", encoding="utf-8") as f:
+            hotwords = [line.strip() for line in f if line.strip()]
+            if hotwords:
+                return hotwords
+            else:
+                print(f"文件 {hotwords_file} 内容为空")
+                print("热词增强关闭")
+        
+        return None
+
+    def __init__(self, input_device_idx, language="auto", textnorm=False):
         super().__init__()
-        self.model = StreamingSenseVoice(language=language)
+        settings = QSettings('SNTube', 'SNTrealtimeSubtitles')
+        textnorm = settings.value('textnorm', textnorm, type=bool)
+        hotwords = self.load_hotwords()
+        print(f"加载的热词: {hotwords}")
+        self.model = StreamingSenseVoice(language=language, textnorm=textnorm, contexts=hotwords)
+        """
+        # 原vad参数
         self.vad_iterator = VADIterator(speech_pad_ms=300)
+        # 自调vad参数
+        self.vad_iterator = VADIterator(speech_pad_ms=300, threshold=0.3, min_silence_duration_ms=400)
+        """
+        self.vad_iterator = VADIterator(speech_pad_ms=400, threshold=0.3, min_silence_duration_ms=300)
         self.input_device_idx = input_device_idx
         self.running = True
 
     def run(self):
         devices = sd.query_devices()
         if len(devices) == 0:
-            print("No microphone devices found")
+            print("没有找到输入设备，请检查设备是否正常连接")
             return
-        # 如果不确定自己的设备列表，可以取消下行注释
-        # print(devices)
-        print(f'Use device: {devices[self.input_device_idx]["name"]}')
+        """
+        # 如果不确定自己的设备列表
+        print(devices)
+        """
+        print(f'所用设备: {devices[self.input_device_idx]["name"]}')
 
         samples_per_read = int(0.1 * 16000)
         with sd.InputStream(channels=1, dtype="float32", samplerate=16000, device=self.input_device_idx) as s:
@@ -51,8 +82,6 @@ class SpeechRecognitionThread(QThread):
                     for res in self.model.streaming_inference(speech_samples * 32768, is_last):
                         sf.write("test.wav", self.vad_iterator.speech_samples, 16000)
                         self.updateTextSignal.emit(res["text"])
-                    # for res in self.model.streaming_inference(speech_samples, is_last):
-                    #     self.updateTextSignal.emit(res["text"])
 
     def terminate(self):
         self.running = False
@@ -78,6 +107,7 @@ class TransparentWindow(QWidget):
         self.buffer = []
         self.counter = 0
         self.selected_language = 'auto'
+        self.textnorm = False
         self.font_size = 14
         self.Window_Width = 1000
         self.dragPosition = None
@@ -202,12 +232,15 @@ class TransparentWindow(QWidget):
         self.toggle_visibility_action.triggered.connect(self.toggleVisibility)
         self.toggle_BG_action = QAction("隐藏背景", self)
         self.toggle_BG_action.triggered.connect(self.toggleBG)
+        self.toggle_TextNorm_action = QAction("标点恢复", self)
+        self.toggle_TextNorm_action.triggered.connect(self.toggleTextNorm)
         self.minimize_action = QAction("最小化", self)
         self.minimize_action.triggered.connect(self.showMinimized)
         self.close_action = QAction("关闭", self)
         self.close_action.triggered.connect(self.close)
         self.context_menu.addAction(self.toggle_visibility_action)
         self.context_menu.addAction(self.toggle_BG_action)
+        self.context_menu.addAction(self.toggle_TextNorm_action)
         self.context_menu.addAction(self.minimize_action)
         self.context_menu.addAction(self.close_action)
 
@@ -237,10 +270,12 @@ class TransparentWindow(QWidget):
             event.accept()
 
     def loadSettings(self):
+        self.textnorm = self.settings.value('textnorm', False, type=bool)
         pos = self.settings.value('pos', QPoint(600, 600))
         size = self.settings.value('size', QSize(self.Window_Width, 100))
         font_size = self.settings.value('font_size', 14, type=int)
         window_width = self.settings.value('window_width', 1000, type=int)
+        selected_language = self.settings.value('selected_language', 'auto')
 
         self.setGeometry(pos.x(), pos.y(), size.width(), size.height())
         self.font_size = font_size
@@ -253,6 +288,21 @@ class TransparentWindow(QWidget):
         self.resize(self.Window_Width, self.height())
         self.adjustSize()
 
+        # 断开 currentIndexChanged 信号
+        self.language_combobox.blockSignals(True)
+
+        # 设置选中的语言
+        index = self.language_combobox.findData(selected_language)
+        if index != -1:
+            self.selected_language = self.language_combobox.itemData(index)
+            self.language_combobox.setCurrentIndex(index)
+
+        # 重新连接 currentIndexChanged 信号
+        self.language_combobox.blockSignals(False)
+
+        # 更新标点恢复按钮
+        self.toggle_TextNorm_action.setText("取消标点" if self.textnorm else "标点恢复")
+
     def updateFontSizeInput(self):
         self.font_size_input.setText(str(self.font_size))
     
@@ -260,10 +310,12 @@ class TransparentWindow(QWidget):
         self.width_slider.setValue(self.Window_Width)
 
     def closeEvent(self, event):
+        self.settings.setValue('textnorm', self.textnorm)
         self.settings.setValue('pos', self.pos())
         self.settings.setValue('size', self.size())
         self.settings.setValue('font_size', self.font_size)
         self.settings.setValue('window_width', self.Window_Width)
+        self.settings.setValue('selected_language', self.selected_language)
 
         if self.speech_thread is not None:
             self.speech_thread.terminate()
@@ -329,10 +381,10 @@ class TransparentWindow(QWidget):
         if self.speech_thread is not None:
             self.speech_thread.terminate()
             self.speech_thread.wait()
-        self.speech_thread = SpeechRecognitionThread(self.input_device_idx, language=self.selected_language)
+        self.speech_thread = SpeechRecognitionThread(self.input_device_idx, language=self.selected_language, textnorm=self.textnorm)
         self.speech_thread.updateTextSignal.connect(self.updateLabelText)
         self.speech_thread.start()
-        print(f'Started thread with device index: {self.input_device_idx} and language: {self.selected_language}')
+        print(f'以设备索引启动线程: {self.input_device_idx}, 语言: {self.selected_language}, 标点恢复: {self.textnorm}')
 
     def updateLabelText(self, text):
         current_text = self.label.text()
@@ -349,6 +401,9 @@ class TransparentWindow(QWidget):
             self.counter = 1
         
         self.label.setText(text)
+        memory_file = StringIO()  # 写入内存
+        memory_file.write(text)
+        print(memory_file.getvalue())  # print出来给hook用
 
         # 缓存区累计3行，则自动复制到剪贴板，改成1则实时复制(比如用麦克风当字幕)，改成99则只输出同一句话最后一行(搭配luna历史记录使用)
         if self.clipboard_output_enabled and self.counter >= 3:
@@ -378,6 +433,13 @@ class TransparentWindow(QWidget):
         self.is_hiddenBG = not self.is_hiddenBG
         self.toggle_BG_action.setText("显示背景" if self.is_hiddenBG else "隐藏背景")
         self.update()
+
+    def toggleTextNorm(self):
+        self.textnorm = not self.textnorm
+        self.toggle_TextNorm_action.setText("取消标点" if self.textnorm else "标点恢复")
+        self.update()
+        self.restartSpeechThread()
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
