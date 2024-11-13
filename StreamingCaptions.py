@@ -31,9 +31,14 @@ def multi_byte_to_wide_char(mb_str, code_page=65001):
     kernel32.MultiByteToWideChar(code_page, 0, mb_str, -1, None, 0)
     return mb_str
 
-# 如果需要手动释放内存（通常不需要）
-def free_buffer(buffer):
-    kernel32.FreeMemory(ctypes.addressof(buffer))
+class WideCharThread(QThread):
+    def __init__(self, text, parent=None):
+        super(WideCharThread, self).__init__(parent)
+        self.text = text
+
+    def run(self):
+        text_with_newline = self.text + "\r\n"  # 添加换行符
+        multi_byte_to_wide_char(text_with_newline.encode('utf-8'))
 
 class SpeechRecognitionThread(QThread):
     updateTextSignal = pyqtSignal(str)
@@ -110,17 +115,19 @@ class TransparentWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.settings = QSettings('SNTube', 'SNTrealtimeSubtitles')
-        self.clipboard_output_enabled = False
         self.default_input_device_idx = sd.default.device[0]
         self.vac_input_device_idx = find_device_index('Line 1 (Virtual Audio Cable)')
         self.input_device_idx = self.default_input_device_idx
         self.is_vac_mode = False
         self.speech_thread = None
+        self.wide_char_thread = None
         self.buffer = []
         self.counter = 0
         self.selected_language = 'auto'
         self.textnorm = False
         self.font_size = 14
+        self.font = QFont("Arial", self.font_size)
+        self.font.setBold(True)
         self.Window_Width = 1000
         self.dragPosition = None
         self.is_hidden = False
@@ -185,17 +192,6 @@ class TransparentWindow(QWidget):
                                              "QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; border-top-right-radius: 3px; border-bottom-right-radius: 3px; }"
                                              "QComboBox QAbstractItemView { border: 1px solid gray; background-color: black; color: white; selection-background-color: darkgray; }")
 
-        self.clipboard_output_btn = QPushButton('剪贴板模式')
-        self.clipboard_output_btn.setFixedHeight(20)
-        self.clipboard_output_btn.setCheckable(True)
-        self.clipboard_output_btn.setChecked(True)
-        self.clipboard_output_btn.toggled.connect(self.toggleClipboardOutput)
-        self.clipboard_output_btn.setStyleSheet(
-            "QPushButton { color: gray; background-color: black; border: none; border-radius: 5px; }"
-            "QPushButton:hover { background-color: lightgray; }"
-            "QPushButton:checked { color: gray; }"
-            "QPushButton:not(:checked) { color: green; }"
-        )
 
         self.device_switch_btn = QPushButton('麦克风模式ON')
         self.device_switch_btn.setFixedHeight(20)
@@ -231,7 +227,6 @@ class TransparentWindow(QWidget):
         btn_layout.addWidget(self.font_size_label)
         btn_layout.addWidget(self.font_size_input)
         btn_layout.addWidget(self.language_combobox)
-        btn_layout.addWidget(self.clipboard_output_btn)
         btn_layout.addWidget(self.device_switch_btn)
         btn_layout.addWidget(self.minimize_btn)
         btn_layout.addWidget(self.close_btn)
@@ -341,19 +336,8 @@ class TransparentWindow(QWidget):
         if self.speech_thread is not None:
             self.speech_thread.terminate()
 
-    def toggleClipboardOutput(self, state):
-        if state:
-            self.clipboard_output_btn.setStyleSheet(
-                "QPushButton { color: gray; background-color: black; border: none; border-radius: 5px; }"
-                "QPushButton:hover { background-color: lightgray; }"
-            )
-            self.clipboard_output_enabled = False
-        else:
-            self.clipboard_output_btn.setStyleSheet(
-                "QPushButton { color: green; background-color: black; border: none; border-radius: 5px; }"
-                "QPushButton:hover { background-color: lightgray; }"
-            )
-            self.clipboard_output_enabled = True
+        if self.wide_char_thread is not None:
+            self.wide_char_thread.quit()
 
     def toggleDeviceMode(self):
         if self.is_vac_mode:
@@ -383,9 +367,8 @@ class TransparentWindow(QWidget):
             new_font_size = int(self.font_size_input.text())
             if new_font_size > 0:
                 self.font_size = new_font_size
-                font = QFont("Arial", self.font_size)
-                font.setBold(True)
-                self.label.setFont(font)
+                self.font.setPointSize(self.font_size)  # 更新字体大小
+                self.label.setFont(self.font)  # 应用更新后的字体
                 self.adjustSize()  # 更新布局
                 self.focusNextChild()
         except ValueError:
@@ -408,45 +391,20 @@ class TransparentWindow(QWidget):
         print(f'以设备索引启动线程: {self.input_device_idx}, 语言: {self.selected_language}, 标点恢复: {self.textnorm}')
 
     def updateLabelText(self, text):
-        current_text = self.label.text()
-        
-        if text.startswith(current_text) or current_text == '':
-            self.buffer.append(text)
-            self.counter += 1
-        else:
-            if self.buffer:
-                self.copyBufferToClipboard()
-                self.buffer.clear()
-                self.counter = 0
-            self.buffer.append(text)
-            self.counter = 1
-        
         self.label.setText(text)
-        text_with_newline = text + "\r\n"  # 添加换行符
-        multi_byte_to_wide_char(text_with_newline.encode('utf-8'))
-
-        # 缓存区累计3行，则自动复制到剪贴板，改成1则实时复制(比如用麦克风当字幕)，改成99则只输出同一句话最后一行(搭配luna历史记录使用)
-        if self.clipboard_output_enabled and self.counter >= 3:
-            self.copyBufferToClipboard()
-            self.buffer.clear()
-            self.counter = 0
-
         self.adjustSize()  # 更新布局
-    
-    def copyBufferToClipboard(self):
-        if not self.clipboard_output_enabled:
-            return
-        
-        multi_line_text = '\n'.join(self.buffer)
-        clipboard = QApplication.clipboard()
-        clipboard.setText(multi_line_text)
+        if self.wide_char_thread is not None:
+            self.wide_char_thread.quit()
+            self.wide_char_thread.wait()
+        self.wide_char_thread = WideCharThread(text, self)
+        self.wide_char_thread.start()
 
     def toggleVisibility(self):
         self.is_hidden = not self.is_hidden
         self.toggle_visibility_action.setText("显示界面" if self.is_hidden else "隐藏界面")
         self.update()
 
-        for widget in [self.width_slider, self.font_size_label, self.font_size_input, self.language_combobox, self.clipboard_output_btn, self.device_switch_btn, self.minimize_btn, self.close_btn]:
+        for widget in [self.width_slider, self.font_size_label, self.font_size_input, self.language_combobox, self.device_switch_btn, self.minimize_btn, self.close_btn]:
             widget.setVisible(not self.is_hidden)
 
     def toggleBG(self):
