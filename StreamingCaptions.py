@@ -16,12 +16,13 @@ import ctypes
 import sys
 import os
 import sounddevice as sd
-import soundfile as sf
+# import soundfile as sf
 from pysilero import VADIterator
 from streaming_sensevoice import StreamingSenseVoice
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QHBoxLayout, QComboBox, QSizePolicy, QLineEdit, QSlider, QMenu, QAction
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSettings, QPoint, QSize
-from PyQt5.QtGui import QColor, QFont, QPainter, QMouseEvent, QIcon
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QHBoxLayout, QComboBox, QSizePolicy, QLineEdit, QSlider, QMenu, QAction, QShortcut
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSettings, QPoint, QSize, QTimer
+from PyQt5.QtGui import QColor, QFont, QPainter, QMouseEvent, QIcon, QKeySequence
+from FontsList import FontListWidget
 
 # 加载kernel32.dll库
 kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
@@ -71,9 +72,9 @@ class SpeechRecognitionThread(QThread):
         # 原vad参数
         self.vad_iterator = VADIterator(speech_pad_ms=300)
         # 自调vad参数
-        self.vad_iterator = VADIterator(speech_pad_ms=300, threshold=0.3, min_silence_duration_ms=400)
-        """
         self.vad_iterator = VADIterator(speech_pad_ms=400, threshold=0.3, min_silence_duration_ms=300)
+        """
+        self.vad_iterator = VADIterator(speech_pad_ms=300, threshold=0.3)
         self.input_device_idx = input_device_idx
         self.running = True
 
@@ -97,7 +98,10 @@ class SpeechRecognitionThread(QThread):
                         self.model.reset()
                     is_last = "end" in speech_dict
                     for res in self.model.streaming_inference(speech_samples * 32768, is_last):
+                        """
+                        # 频繁输出样本
                         sf.write("test.wav", self.vad_iterator.speech_samples, 16000)
+                        """
                         self.updateTextSignal.emit(res["text"])
 
     def terminate(self):
@@ -125,14 +129,16 @@ class TransparentWindow(QWidget):
         self.counter = 0
         self.selected_language = 'auto'
         self.textnorm = False
+        self.font_name = "Arial"
         self.font_size = 14
-        self.font = QFont("Arial", self.font_size)
+        self.font = QFont(self.font_name, self.font_size)
         self.font.setBold(True)
         self.Window_Width = 1000
         self.dragPosition = None
         self.is_hidden = False
         self.is_hiddenBG = False
         self.alignment = Qt.AlignLeft
+        self.font_settings_window = None
         self.initUI()
         self.loadSettings()
         self.updateFontSizeInput()
@@ -149,7 +155,7 @@ class TransparentWindow(QWidget):
         self.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding))
         
         self.label = QLabel('等待连接', self)
-        font = QFont("Arial", self.font_size)
+        font = QFont(self.font_name, self.font_size)
         font.setBold(True)
         self.label.setFont(font)
         self.label.setStyleSheet("color: white;")
@@ -238,22 +244,50 @@ class TransparentWindow(QWidget):
         self.context_menu = QMenu(self)
         self.toggle_visibility_action = QAction("隐藏界面", self)
         self.toggle_visibility_action.triggered.connect(self.toggleVisibility)
+        self.toggle_visibility_action.setShortcut(QKeySequence('Alt+1'))
         self.toggle_BG_action = QAction("隐藏背景", self)
         self.toggle_BG_action.triggered.connect(self.toggleBG)
+        self.toggle_BG_action.setShortcut(QKeySequence('Alt+2'))
         self.toggle_TextNorm_action = QAction("标点恢复", self)
         self.toggle_TextNorm_action.triggered.connect(self.toggleTextNorm)
+        self.toggle_TextNorm_action.setShortcut(QKeySequence('Alt+3'))
         self.toggle_alignment_action = QAction("文本靠左", self)
         self.toggle_alignment_action.triggered.connect(self.toggleAlignment)
+        self.toggle_alignment_action.setShortcut(QKeySequence('Alt+4'))
+        self.font_settings_action = QAction("字体设置", self)
+        self.font_settings_action.triggered.connect(self.openFontSettings)
+        self.font_settings_action.setShortcut(QKeySequence('Alt+5'))
         self.minimize_action = QAction("最小化", self)
         self.minimize_action.triggered.connect(self.showMinimized)
+        self.minimize_action.setShortcut(QKeySequence('Ctrl+`'))
         self.close_action = QAction("关闭", self)
         self.close_action.triggered.connect(self.close)
+        self.close_action.setShortcut(QKeySequence('Esc'))
         self.context_menu.addAction(self.toggle_visibility_action)
         self.context_menu.addAction(self.toggle_BG_action)
         self.context_menu.addAction(self.toggle_TextNorm_action)
         self.context_menu.addAction(self.toggle_alignment_action)
+        self.context_menu.addAction(self.font_settings_action)
         self.context_menu.addAction(self.minimize_action)
         self.context_menu.addAction(self.close_action)
+
+        QShortcut(QKeySequence('Alt+1'), self).activated.connect(self.toggle_visibility_action.trigger)
+        QShortcut(QKeySequence('Alt+2'), self).activated.connect(self.toggle_BG_action.trigger)
+        QShortcut(QKeySequence('Alt+3'), self).activated.connect(self.toggle_TextNorm_action.trigger)
+        QShortcut(QKeySequence('Alt+4'), self).activated.connect(self.toggle_alignment_action.trigger)
+        QShortcut(QKeySequence('Alt+5'), self).activated.connect(self.font_settings_action.trigger)
+        QShortcut(QKeySequence('Ctrl+`'), self).activated.connect(self.minimize_action.trigger)
+        QShortcut(QKeySequence('Esc'), self).activated.connect(self.close_action.trigger)
+        menu_key_shortcut = QShortcut(QKeySequence('Menu'), self)
+        menu_key_shortcut.activated.connect(self.showContextMenu)
+        copy_shortcut = QShortcut(QKeySequence('Ctrl+C'), self)
+        copy_shortcut.activated.connect(self.copyLabelContent)
+
+    def showContextMenu(self):
+        # 获取鼠标指针的位置
+        pos = self.mapFromGlobal(self.cursor().pos())
+        # 显示右键菜单
+        self.context_menu.exec_(self.mapToGlobal(pos))
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -284,14 +318,16 @@ class TransparentWindow(QWidget):
         self.textnorm = self.settings.value('textnorm', False, type=bool)
         pos = self.settings.value('pos', QPoint(600, 600))
         size = self.settings.value('size', QSize(self.Window_Width, 100))
+        font_name = self.settings.value('font_name', "Arial")
         font_size = self.settings.value('font_size', 14, type=int)
         window_width = self.settings.value('window_width', 1000, type=int)
         selected_language = self.settings.value('selected_language', 'auto')
         alignment = self.settings.value('alignment', Qt.AlignLeft, type=int)
 
         self.setGeometry(pos.x(), pos.y(), size.width(), size.height())
+        self.font_name = font_name
         self.font_size = font_size
-        font = QFont("Arial", self.font_size)
+        font = QFont(self.font_name, self.font_size)
         font.setBold(True)
         self.label.setFont(font)
 
@@ -328,10 +364,14 @@ class TransparentWindow(QWidget):
         self.settings.setValue('textnorm', self.textnorm)
         self.settings.setValue('pos', self.pos())
         self.settings.setValue('size', self.size())
+        self.settings.setValue('font_name', self.font_name)
         self.settings.setValue('font_size', self.font_size)
         self.settings.setValue('window_width', self.Window_Width)
         self.settings.setValue('selected_language', self.selected_language)
         self.settings.setValue('alignment', self.label.alignment())
+
+        if self.font_settings_window and self.font_settings_window.isVisible():
+            self.font_settings_window.close()
 
         if self.speech_thread is not None:
             self.speech_thread.terminate()
@@ -399,6 +439,15 @@ class TransparentWindow(QWidget):
         self.wide_char_thread = WideCharThread(text, self)
         self.wide_char_thread.start()
 
+    def copyLabelContent(self):
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.label.text())
+        self.label.setStyleSheet("color: green;")
+        QTimer.singleShot(300, self.restoreLabelColor)
+
+    def restoreLabelColor(self):
+        self.label.setStyleSheet("color: white;")
+
     def toggleVisibility(self):
         self.is_hidden = not self.is_hidden
         self.toggle_visibility_action.setText("显示界面" if self.is_hidden else "隐藏界面")
@@ -429,6 +478,21 @@ class TransparentWindow(QWidget):
         self.settings.setValue('alignment', self.label.alignment())
         self.adjustSize()
 
+    def openFontSettings(self):
+        self.font_settings_window = FontListWidget()
+        self.font_settings_window.font_list.itemSelectionChanged.connect(self.setFontName)
+        self.font_settings_window.show()
+
+    def setFontName(self):
+        selected_items = self.font_settings_window.font_list.selectedItems()
+        if selected_items:
+            item = selected_items[0]
+            self.font_name = item.text()
+            self.font = QFont(self.font_name, self.font_size)
+            self.font.setBold(True)
+            self.label.setFont(self.font)
+            self.settings.setValue('font_name', self.font_name)
+            self.adjustSize()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
