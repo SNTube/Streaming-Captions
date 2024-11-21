@@ -18,11 +18,11 @@ import os
 import sounddevice as sd
 # import soundfile as sf
 from pysilero import VADIterator
-from streaming_sensevoice import StreamingSenseVoice
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QHBoxLayout, QComboBox, QSizePolicy, QLineEdit, QSlider, QMenu, QAction, QShortcut
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSettings, QPoint, QSize, QTimer
 from PyQt5.QtGui import QColor, QFont, QPainter, QMouseEvent, QIcon, QKeySequence
-from FontsList import FontListWidget
+from SimplePage import FontListWidget, run_loading_window
+from multiprocessing import Process
 
 # 加载kernel32.dll库
 kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
@@ -62,6 +62,10 @@ class SpeechRecognitionThread(QThread):
         return None
 
     def __init__(self, input_device_idx, language="auto", textnorm=False):
+        # 切换时显示加载动画就放这里
+        # 再载模型
+        from streaming_sensevoice import StreamingSenseVoice
+
         super().__init__()
         settings = QSettings('SNTube', 'SNTrealtimeSubtitles')
         textnorm = settings.value('textnorm', textnorm, type=bool)
@@ -147,12 +151,17 @@ class TransparentWindow(QWidget):
         self.restartSpeechThread()
 
     def initUI(self):
+
+        # 加载动画 
+        self.open_new_window()
+
         self.setWindowTitle('Streaming Captions')
         self.resize(self.Window_Width, 100)
-        self.setWindowIcon(QIcon('SC_SNTube.ico'))
+        self.setWindowIcon(QIcon('SimplePage/SC_SNTube.ico'))
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
         self.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding))
+        self.setAttribute(Qt.WA_DeleteOnClose)
         
         self.label = QLabel('等待连接', self)
         font = QFont(self.font_name, self.font_size)
@@ -283,6 +292,11 @@ class TransparentWindow(QWidget):
         copy_shortcut = QShortcut(QKeySequence('Ctrl+C'), self)
         copy_shortcut.activated.connect(self.copyLabelContent)
 
+    # 加载动画
+    def open_new_window(self):
+        loading_window = Process(target=run_loading_window)
+        loading_window.start()
+
     def showContextMenu(self):
         # 获取鼠标指针的位置
         pos = self.mapFromGlobal(self.cursor().pos())
@@ -373,11 +387,43 @@ class TransparentWindow(QWidget):
         if self.font_settings_window and self.font_settings_window.isVisible():
             self.font_settings_window.close()
 
-        if self.speech_thread is not None:
-            self.speech_thread.terminate()
+        # 定义超时时间（5秒）
+        timeout = 5000  # 毫秒
 
+        # 启动定时器
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(self.forceTerminateThreads)
+
+        # 尝试优雅地终止线程
+        if self.speech_thread is not None:
+            self.speech_thread.running = False  # 设置标志位
+            self.speech_thread.quit()  # 请求线程退出
         if self.wide_char_thread is not None:
             self.wide_char_thread.quit()
+
+        # 启动定时器，等待线程退出
+        timer.start(timeout)
+
+        # 确保多进程也被正确终止
+        if hasattr(self, 'loading_window') and self.loading_window.is_alive():
+            self.loading_window.terminate()
+            self.loading_window.join()
+
+        event.accept()  # 允许窗口关闭
+
+    def forceTerminateThreads(self):
+        # 强制终止 speech_thread
+        if self.speech_thread is not None and self.speech_thread.isRunning():
+            print("强制终止 speech_thread")
+            self.speech_thread.terminate()
+            self.speech_thread.wait()
+
+        # 强制终止 wide_char_thread
+        if self.wide_char_thread is not None and self.wide_char_thread.isRunning():
+            print("强制终止 wide_char_thread")
+            self.wide_char_thread.terminate()
+            self.wide_char_thread.wait()
 
     def toggleDeviceMode(self):
         if self.is_vac_mode:

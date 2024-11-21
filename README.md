@@ -51,6 +51,36 @@ python StreamingCaptions.py
 
 如有 `Bug` 请提 `Issues` ，我编程水平靠AI，能不能解决只能是看情况。 
 
+#### 清除用户配置
+
+把下方代码保存 `.bat` 文件，运行即可。
+
+```bash
+@echo off
+chcp 65001 >nul
+echo 正在尝试清除注册表中 StreamingCaptions用户配置项 ...
+reg delete "HKEY_CURRENT_USER\Software\SNTube\SNTrealtimeSubtitles" /f
+if %errorlevel% equ 0 (
+    echo 用户配置项已成功清除。
+) else (
+    echo 清除用户配置项失败。请检查 是否已经清除 或是 是否有权限问题。
+)
+pause
+```
+
+#### 【美化】加载界面背景图片设定
+
+- 优先级
+ `在线方案` 和 `本地方案` 都设定的情况下会使用 `在线方案`。可以都没有，也就是不设定加载界面，不妨碍运行。
+
+- 本地方案
+
+新建 `SimplePage/LoadImg` 文件夹，可以支持自定义背景，只要名字带 `load` ，gif、png、jpg、bmp等格式均可。
+
+- 在线方案
+
+ `SimplePage` 文件夹中，建一个 `load_url.txt` ，里面可以放 `图片链接` ，或是 `图片API` ，一行一个链接(也是随机一行)。只要是 `GET请求` ， `直接显示图片` 或是 `返回URL图片链接` 的都可以兼容。
+
 ## 使用 Lunatranslator 翻译字幕
 
  `Lunatranslator` 如何使用不做赘述，仅说明相关部分
