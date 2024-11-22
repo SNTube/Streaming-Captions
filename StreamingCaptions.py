@@ -61,8 +61,9 @@ class SpeechRecognitionThread(QThread):
         
         return None
 
-    def __init__(self, input_device_idx, language="auto", textnorm=False):
-        # 切换时显示加载动画就放这里
+    # 调大chunk_size让句子减少连词情况，但会增加识别时间，默认10
+    def __init__(self, input_device_idx, language="auto", textnorm=False, chunk_size=10, padding=8, beam_size=3, speech_pad_ms=300, threshold=0.3, min_silence_duration_ms=300):
+        # 切换设置时显示加载动画就放这里
         # 再载模型
         from streaming_sensevoice import StreamingSenseVoice
 
@@ -71,14 +72,12 @@ class SpeechRecognitionThread(QThread):
         textnorm = settings.value('textnorm', textnorm, type=bool)
         hotwords = self.load_hotwords()
         print(f"加载的热词: {hotwords}")
-        self.model = StreamingSenseVoice(language=language, textnorm=textnorm, contexts=hotwords)
+        self.model = StreamingSenseVoice(language=language, textnorm=textnorm, contexts=hotwords, chunk_size=chunk_size, padding=padding, beam_size=beam_size)
         """
         # 原vad参数
         self.vad_iterator = VADIterator(speech_pad_ms=300)
-        # 自调vad参数
-        self.vad_iterator = VADIterator(speech_pad_ms=400, threshold=0.3, min_silence_duration_ms=300)
         """
-        self.vad_iterator = VADIterator(speech_pad_ms=300, threshold=0.3)
+        self.vad_iterator = VADIterator(speech_pad_ms=speech_pad_ms, threshold=threshold, min_silence_duration_ms=min_silence_duration_ms)
         self.input_device_idx = input_device_idx
         self.running = True
 
@@ -91,7 +90,7 @@ class SpeechRecognitionThread(QThread):
         # 如果不确定自己的设备列表
         print(devices)
         """
-        print(f'所用设备: {devices[self.input_device_idx]["name"]}')
+        print(f'所用设备: {devices[self.input_device_idx]["name"]}\n===============================================')
 
         samples_per_read = int(0.1 * 16000)
         with sd.InputStream(channels=1, dtype="float32", samplerate=16000, device=self.input_device_idx) as s:
@@ -133,6 +132,12 @@ class TransparentWindow(QWidget):
         self.counter = 0
         self.selected_language = 'auto'
         self.textnorm = False
+        self.chunk_size = 10
+        self.padding = 8
+        self.beam_size = 3
+        self.speech_pad_ms = 300
+        self.threshold = 0.3
+        self.min_silence_duration_ms = 300
         self.font_name = "Arial"
         self.font_size = 14
         self.font = QFont(self.font_name, self.font_size)
@@ -337,6 +342,12 @@ class TransparentWindow(QWidget):
         window_width = self.settings.value('window_width', 1000, type=int)
         selected_language = self.settings.value('selected_language', 'auto')
         alignment = self.settings.value('alignment', Qt.AlignLeft, type=int)
+        self.chunk_size = self.settings.value('chunk_size', 10, type=int)
+        self.padding = self.settings.value('padding', 8, type=int)
+        self.beam_size = self.settings.value('beam_size', 3, type=int)
+        self.speech_pad_ms = self.settings.value('speech_pad_ms', 300, type=int)
+        self.threshold = self.settings.value('threshold', 0.3, type=float)
+        self.min_silence_duration_ms = self.settings.value('min_silence_duration_ms', 300, type=int)
 
         self.setGeometry(pos.x(), pos.y(), size.width(), size.height())
         self.font_name = font_name
@@ -383,6 +394,12 @@ class TransparentWindow(QWidget):
         self.settings.setValue('window_width', self.Window_Width)
         self.settings.setValue('selected_language', self.selected_language)
         self.settings.setValue('alignment', self.label.alignment())
+        self.settings.setValue('chunk_size', self.chunk_size)
+        self.settings.setValue('padding', self.padding)
+        self.settings.setValue('beam_size', self.beam_size)
+        self.settings.setValue('speech_pad_ms', self.speech_pad_ms)
+        self.settings.setValue('threshold', self.threshold)
+        self.settings.setValue('min_silence_duration_ms', self.min_silence_duration_ms)
 
         if self.font_settings_window and self.font_settings_window.isVisible():
             self.font_settings_window.close()
@@ -471,10 +488,10 @@ class TransparentWindow(QWidget):
         if self.speech_thread is not None:
             self.speech_thread.terminate()
             self.speech_thread.wait()
-        self.speech_thread = SpeechRecognitionThread(self.input_device_idx, language=self.selected_language, textnorm=self.textnorm)
+        self.speech_thread = SpeechRecognitionThread(self.input_device_idx, language=self.selected_language, textnorm=self.textnorm, chunk_size=self.chunk_size, padding=self.padding, beam_size=self.beam_size, speech_pad_ms=self.speech_pad_ms, threshold=self.threshold, min_silence_duration_ms=self.min_silence_duration_ms)
         self.speech_thread.updateTextSignal.connect(self.updateLabelText)
         self.speech_thread.start()
-        print(f'以设备索引启动线程: {self.input_device_idx}, 语言: {self.selected_language}, 标点恢复: {self.textnorm}')
+        print(f'以设备索引启动线程: {self.input_device_idx}\n语言: {self.selected_language}\n标点恢复: {self.textnorm}\nchunk_size: {self.chunk_size}\npadding: {self.padding}\nbeam_size: {self.beam_size}\n语音填充时间: {self.speech_pad_ms}\nVAD阈值: {self.threshold}\n最小静音持续时间: {self.min_silence_duration_ms}')
 
     def updateLabelText(self, text):
         self.label.setText(text)
