@@ -23,9 +23,9 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSettings, QPoint, QSize, QTim
 from PyQt5.QtGui import QColor, QFont, QPainter, QMouseEvent, QIcon, QKeySequence
 from SimplePage import FontListWidget, run_loading_window
 from multiprocessing import Process
+"""
 import multiprocessing
 
-"""
 # 编译后防止重复运行进程
 if not hasattr(sys, 'frozen'):
     sys.frozen = True
