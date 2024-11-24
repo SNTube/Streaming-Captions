@@ -23,6 +23,13 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSettings, QPoint, QSize, QTim
 from PyQt5.QtGui import QColor, QFont, QPainter, QMouseEvent, QIcon, QKeySequence
 from SimplePage import FontListWidget, run_loading_window
 from multiprocessing import Process
+import multiprocessing
+
+"""
+# 编译后防止重复运行进程
+if not hasattr(sys, 'frozen'):
+    sys.frozen = True
+"""
 
 # 加载kernel32.dll库
 kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
@@ -299,6 +306,10 @@ class TransparentWindow(QWidget):
 
     # 加载动画
     def open_new_window(self):
+        """
+        # 编译后防止重复运行
+        multiprocessing.freeze_support()
+        """
         loading_window = Process(target=run_loading_window)
         loading_window.start()
 
@@ -470,7 +481,8 @@ class TransparentWindow(QWidget):
             new_font_size = int(self.font_size_input.text())
             if new_font_size > 0:
                 self.font_size = new_font_size
-                self.font.setPointSize(self.font_size)  # 更新字体大小
+                self.font = QFont(self.font_name, self.font_size)  # 更新字体名称和大小
+                self.font.setBold(True)
                 self.label.setFont(self.font)  # 应用更新后的字体
                 self.adjustSize()  # 更新布局
                 self.focusNextChild()
