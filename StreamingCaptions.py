@@ -53,7 +53,10 @@ class SpeechRecognitionThread(QThread):
 
     # 加载热词增强
     def load_hotwords(self):
-        hotwords_file = os.path.join(os.path.dirname(__file__), "hotwords.txt")
+        # 修复一下hotwords路径，顺便为了整洁放SimplePage文件夹下
+        start_script_path = os.path.abspath(sys.argv[0])
+        base_dir = os.path.dirname(start_script_path)
+        hotwords_file = os.path.join(base_dir, "SimplePage/hotwords.txt")
         if not os.path.exists(hotwords_file):
             print(f"文件 {hotwords_file} 不存在")
             print("热词增强关闭")
@@ -569,6 +572,7 @@ class TransparentWindow(QWidget):
             self.settings.setValue('font_name', self.font_name)
             self.adjustSize()
 
+# def start():
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     ex = TransparentWindow()

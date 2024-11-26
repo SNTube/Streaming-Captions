@@ -47,7 +47,7 @@ python StreamingCaptions.py
 
 #### 热词增强
 
-同目录下放一个 `hotwords.txt` ，一行一个词，可以提升对指定词的准确率。 
+ `SimplePage文件夹` 下放一个 `hotwords.txt` ，一行一个词，可以提升对指定词的准确率。 
 
 如有 `Bug` 请提 `Issues` ，我编程水平靠AI，能不能解决只能是看情况。 
 
