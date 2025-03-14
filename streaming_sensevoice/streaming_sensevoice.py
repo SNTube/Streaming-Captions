@@ -20,6 +20,7 @@ from asr_decoder import CTCDecoder
 from funasr import AutoModel
 from funasr.frontends.wav_frontend import load_cmvn
 from online_fbank import OnlineFbank
+import numpy as np
 
 from .sensevoice import SenseVoiceSmall
 
@@ -76,13 +77,14 @@ class StreamingSenseVoice:
             self.decoder = CTCDecoder(contexts, symbol_table, bpe_model)
         else:
             self.beam_size = 1
-            self.decoder = CTCDecoder(symbol_table=symbol_table, bpe_model=bpe_model)
+            self.decoder = CTCDecoder()
 
         self.chunk_size = chunk_size
         self.padding = padding
         self.cur_idx = -1
         self.caches_shape = (chunk_size + 2 * padding, kwargs["input_size"])
         self.caches = torch.zeros(self.caches_shape)
+        self.zeros = np.zeros((1, kwargs["input_size"]), dtype=float)
 
     @staticmethod
     def load_model(model: str, device: str) -> tuple:
@@ -129,7 +131,10 @@ class StreamingSenseVoice:
         features = self.fbank.get_lfr_frames(
             neg_mean=self.neg_mean, inv_stddev=self.inv_stddev
         )
-        for feature in torch.unbind(torch.tensor(features), dim=0):
+        if is_last and len(features) == 0:
+            features = self.zeros
+        for idx, feature in enumerate(torch.unbind(torch.tensor(features), dim=0)):
+            is_last = is_last and idx == features.shape[0] - 1
             self.caches = torch.roll(self.caches, -1, dims=0)
             self.caches[-1, :] = feature
             self.cur_idx += 1
