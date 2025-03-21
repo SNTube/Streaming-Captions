@@ -68,7 +68,7 @@ class SpeechRecognitionThread(QThread):
             else:
                 print(f"文件 {hotwords_file} 内容为空")
                 print("热词增强关闭")
-        
+
         return None
 
     # 调大chunk_size让句子减少连词情况，但会增加识别时间，默认10
@@ -177,7 +177,7 @@ class TransparentWindow(QWidget):
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
         self.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding))
         self.setAttribute(Qt.WA_DeleteOnClose)
-        
+
         self.label = QLabel('等待连接', self)
         font = QFont(self.font_name, self.font_size)
         font.setBold(True)
@@ -261,11 +261,14 @@ class TransparentWindow(QWidget):
         btn_layout.addWidget(self.minimize_btn)
         btn_layout.addWidget(self.close_btn)
         layout.addLayout(btn_layout)
-        
+
         self.setLayout(layout)
 
         # 右键菜单
         self.context_menu = QMenu(self)
+        self.toggle_lock_action = QAction("锁定界面", self)
+        self.toggle_lock_action.triggered.connect(self.toggleLockInterface)
+        self.toggle_lock_action.setShortcut(QKeySequence('Ctrl+0'))
         self.toggle_visibility_action = QAction("隐藏界面", self)
         self.toggle_visibility_action.triggered.connect(self.toggleVisibility)
         self.toggle_visibility_action.setShortcut(QKeySequence('Alt+1'))
@@ -287,6 +290,7 @@ class TransparentWindow(QWidget):
         self.close_action = QAction("关闭", self)
         self.close_action.triggered.connect(self.close)
         self.close_action.setShortcut(QKeySequence('Esc'))
+        self.context_menu.addAction(self.toggle_lock_action)  # 添加在隐藏界面项上方
         self.context_menu.addAction(self.toggle_visibility_action)
         self.context_menu.addAction(self.toggle_BG_action)
         self.context_menu.addAction(self.toggle_TextNorm_action)
@@ -294,7 +298,7 @@ class TransparentWindow(QWidget):
         self.context_menu.addAction(self.font_settings_action)
         self.context_menu.addAction(self.minimize_action)
         self.context_menu.addAction(self.close_action)
-
+        QShortcut(QKeySequence('Ctrl+0'), self).activated.connect(self.toggle_lock_action.trigger)
         QShortcut(QKeySequence('Alt+1'), self).activated.connect(self.toggle_visibility_action.trigger)
         QShortcut(QKeySequence('Alt+2'), self).activated.connect(self.toggle_BG_action.trigger)
         QShortcut(QKeySequence('Alt+3'), self).activated.connect(self.toggle_TextNorm_action.trigger)
@@ -330,12 +334,19 @@ class TransparentWindow(QWidget):
         painter.setPen(Qt.NoPen)
 
         radius = 10
-        
+
         rect = self.rect()
         painter.drawRoundedRect(rect, radius, radius)
 
+    def toggleLockInterface(self):
+        """切换界面锁定状态，控制窗口是否可拖拽"""
+        self.is_locked = not hasattr(self, 'is_locked') or not self.is_locked
+        self.toggle_lock_action.setText("解锁界面" if self.is_locked else "锁定界面")
+        self.update()
+
     def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
+        """处理鼠标按下事件，如果是左键且未锁定则记录拖拽位置"""
+        if event.button() == Qt.LeftButton and not getattr(self, 'is_locked', False):
             self.dragPosition = event.globalPos() - self.frameGeometry().topLeft()
             event.accept()
             self.focusNextChild()  # 失焦输入框
@@ -343,7 +354,8 @@ class TransparentWindow(QWidget):
             self.context_menu.exec_(self.mapToGlobal(event.pos()))
 
     def mouseMoveEvent(self, event: QMouseEvent):
-        if event.buttons() == Qt.LeftButton and self.dragPosition is not None:
+        """处理鼠标移动事件，仅在未锁定时允许拖拽窗口"""
+        if event.buttons() == Qt.LeftButton and self.dragPosition is not None and not getattr(self, 'is_locked', False):
             self.move(event.globalPos() - self.dragPosition)
             event.accept()
 
@@ -395,7 +407,7 @@ class TransparentWindow(QWidget):
 
     def updateFontSizeInput(self):
         self.font_size_input.setText(str(self.font_size))
-    
+
     def updateWidthInput(self):
         self.width_slider.setValue(self.Window_Width)
 
